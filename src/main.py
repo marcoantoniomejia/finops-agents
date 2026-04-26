@@ -17,6 +17,18 @@ app = FastAPI(
     version="2.1"
 )
 
+@app.get("/")
+def health_check():
+    """Health check para Cloud Run y navegadores."""
+    return {
+        "status": "healthy",
+        "service": "PISA FinOps Multi-Agent API",
+        "version": "2.1",
+        "endpoints": {
+            "POST /run-agents": "Ejecuta el ciclo completo de análisis FinOps"
+        }
+    }
+
 @app.post("/run-agents")
 def run_agents():
     """
