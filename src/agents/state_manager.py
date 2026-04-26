@@ -14,16 +14,17 @@ from google.adk import Agent
 from src.tools.billing import get_current_month_spend_by_project, get_previous_month_spend_by_project, get_top_services_delta
 from typing import List
 
-class AnomalyAlert:
+from pydantic import BaseModel
+
+class AnomalyAlert(BaseModel):
     """Clase Modelo (Data Transfer Object) para serializar las Alertas de incrementos."""
-    def __init__(self, project: str, severity: str, delta: float, current: float, previous: float, top_services: list, reason: str = ""):
-        self.project = project
-        self.severity = severity  # "HIGH", "MEDIUM", "LOW"
-        self.delta = delta        # Porcentaje de crecimiento Ej: 15.5
-        self.current = current    # Dólares actuales 
-        self.previous = previous  # Dólares mes pasado
-        self.top_services = top_services # Contexto descriptivo (Ej: [Cloud Run, Compute Engine])
-        self.reason = reason      # Observaciones
+    project: str
+    severity: str  # "HIGH", "MEDIUM", "LOW"
+    delta: float        # Porcentaje de crecimiento Ej: 15.5
+    current: float    # Dólares actuales 
+    previous: float  # Dólares mes pasado
+    top_services: list # Contexto descriptivo (Ej: [Cloud Run, Compute Engine])
+    reason: str = ""      # Observaciones
 
 def detect_anomalies_per_project(threshold: float = 10.0) -> List[AnomalyAlert]:
     """

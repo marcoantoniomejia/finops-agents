@@ -4,6 +4,7 @@ google-cloud-compute
 google-cloud-recommender
 google-cloud-monitoring
 google-cloud-secret-manager
+google-cloud-storage
 atlassian-python-api
 fastapi
 uvicorn

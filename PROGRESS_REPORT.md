@@ -35,13 +35,13 @@ El núcleo del proyecto está ensamblado empleando la librería `google_adk` y p
 * **`src/tools/jira_tickets.py`**: Contiene la capa Atlassian configurada para `pisa.atlassian.net`. Implementa validación inteligente por JQL (evita duplicar incidentes y en su lugar añade comentarios sobre el ticket activo si la anomalía persiste).
 * **`src/tools/notifications.py`**: Conector para el endpoint JSON del Slack corporativo.
 
-## 5. Infraestructura y Cloud ☁️
+## 5. Infraestructura y Cloud ☁️ (ESTADO: OPERATIVO 🚀)
 
-* **API de Arranque (`src/main.py`)**: Endpoints de FastAPI listos para servir como webhook en Cloud Scheduler.
-* **Métricas IaC**: Scripts `log_metrics.py` y `alerting_policies.py` para mapear las alertas en Google Cloud Monitoring.
-* **CI/CD (`.github/workflows/deploy.yml`)**: GitHub action configurado con tu *Workload Identity Pool* (`github-pool`) hacia `psa-infra-app-mx-dev-proj`.
-* **Containerización (`Dockerfile`)**: Generado en capa `python:3.12-slim`.
+* **Cloud Run**: Desplegado exitosamente en `us-central1`. La API está activa y respondiendo.
+* **Vertex AI Integration**: Configurada para usar la identidad de la Service Account de Cloud Run. No requiere llaves API estáticas.
+* **BigQuery & IAM**: Permisos transversales otorgados para que los agentes puedan auditar el proyecto de facturación y el proyecto de infraestructura.
+* **Endpoint `/run-agents`**: Validado y funcionando. Los agentes de Estado, Cómputo y BigQuery ya están interactuando y generando reportes.
 
 ---
 
-**Por favor tómate el tiempo de revisar el código, validar los comentarios y avísame cuando estés listo para continuar para poder diagnosticar la falta de la librería en el despliegue.**
+**¡Hito Alcanzado!** El ecosistema FinOps v2.1 ya está viviendo en la nube. Los agentes ya pueden detectar anomalías y el siguiente paso es conectar formalmente las credenciales de Jira en Secret Manager para automatizar la creación de tickets.
