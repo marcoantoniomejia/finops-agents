@@ -1,9 +1,9 @@
 import pytest
 from unittest.mock import patch
-from src.agents.state_manager import detect_anomalies_per_project
+from agents.state_manager import detect_anomalies_per_project
 
-@patch('src.agents.state_manager.get_current_month_spend_by_project')
-@patch('src.agents.state_manager.get_previous_month_spend_by_project')
+@patch('agents.state_manager.get_current_month_spend_by_project')
+@patch('agents.state_manager.get_previous_month_spend_by_project')
 def test_detect_anomalies(mock_previous, mock_current):
     # Setup mocks
     mock_current.return_value = {

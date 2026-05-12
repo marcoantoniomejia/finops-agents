@@ -1,9 +1,9 @@
 import pytest
 from unittest.mock import patch
-from src.tools.recommender import get_vm_sizing_recommendations
-from src.agents.compute_auditor import compute_auditor_agent
+from tools.recommender import get_vm_sizing_recommendations
+from agents.compute_auditor import compute_auditor_agent
 
-@patch('src.tools.recommender.recommender_v1.RecommenderClient')
+@patch('tools.recommender.recommender_v1.RecommenderClient')
 def test_vm_recommendations(mock_client):
     # Mocking basic recommendator result
     mock_instance = mock_client.return_value

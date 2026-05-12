@@ -1,0 +1,6 @@
+.git
+.gitignore
+node_modules/
+source.tar.gz
+tests/
+# Asegurarse de que el Dockerfile y src estén INCLUIDOS (no listarlos aquí si queremos que se suban)

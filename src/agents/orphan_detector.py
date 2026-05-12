@@ -14,6 +14,7 @@ from src.tools.project_scanner import find_zero_billing_projects
 # ==============================================================
 orphan_detector_agent = Agent(
     name="orphan_detector",
+    model="gemini-3.1-flash",
     instruction=(
         "Eres un cazador de código y FinOps senior de PISA trabajando proactivamente para recuperar el dinero que se "
         "imprime al aire gracias a los 'recursos huérfanos' o desvinculados.\n"

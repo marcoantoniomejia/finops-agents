@@ -1,37 +1,45 @@
-"""
-Módulo Principal - API de Cloud Run
-===================================
-Expone el orquestador Multi-Agente FinOps a través de la web empleando FastAPI.
-De esta manera, servicios serverless como Google Cloud Scheduler pueden llamar a
-`POST /run-agents` de manera diaria mediante una petición HTTP (cron).
-"""
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
 import os
 from src.orchestrator import execute_daily_finops_cycle
-from src.tools.storage import get_latest_report_from_gcs
+import logging
 
-# Instanciación de la aplicación FastAPI
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Environment setup
+project_id = os.environ.get('GOOGLE_CLOUD_PROJECT')
+location = os.environ.get('GOOGLE_CLOUD_LOCATION', 'us-central1') # Default if not set
+
+if not project_id:
+    logger.warning("GOOGLE_CLOUD_PROJECT environment variable is not set.")
+
 app = FastAPI(
-    title="PISA FinOps Multi-Agent API",
-    description="Portal HTTP Serverless para invocar la ejecución del clúster de agentes autónomos.",
-    version="2.1"
+    title="PISA FinOps Agents Runner",
+    description="API to trigger FinOps agent execution and report generation.",
+    version="2.1.12" # Forced refresh 2.1.12
 )
 
-@app.get("/")
-def health_check():
-    """Health check para Cloud Run y navegadores."""
-    return {
-        "status": "healthy",
-        "service": "PISA FinOps Multi-Agent API",
-        "version": "2.1",
-        "endpoints": {
-            "POST /run-agents": "Ejecuta el ciclo completo de análisis FinOps",
-            "GET /latest-report": "Visualiza el reporte más reciente en formato HTML"
-        }
-    }
+@app.post("/run-agents")
+def run_agents_endpoint():
+    """
+    Triggers the FinOps agents execution via the Orchestrator.
+    """
+    logger.info("POST /run-agents endpoint called.")
+    try:
+        logger.info("Attempting to run agents...")
+        # Execute the agents cycle
+        execute_daily_finops_cycle()
+        logger.info("Agents executed successfully.")
+        return {"status": "success", "message": "Reporte generado y guardado en GCS.", "version": "2.1.12"}
 
+    except Exception as e:
+        logger.error(f"Error during agent execution: {e}", exc_info=True)
+        return {"status": "error", "message": str(e)}
+
+from fastapi.responses import HTMLResponse
+from src.tools.storage import get_latest_report_from_gcs
 import base64
 
 @app.get("/latest-report", response_class=HTMLResponse)
@@ -53,24 +61,8 @@ def view_report():
         <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css/github-markdown.css">
         <style>
-            body {{
-                box-sizing: border-box;
-                min-width: 200px;
-                max-width: 980px;
-                margin: 0 auto;
-                padding: 45px;
-            }}
-            .markdown-body {{
-                padding: 45px;
-                border: 1px solid #ddd;
-                border-radius: 8px;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            }}
-            @media (max-width: 767px) {{
-                .markdown-body {{
-                    padding: 15px;
-                }}
-            }}
+            body {{ box-sizing: border-box; min-width: 200px; max-width: 980px; margin: 0 auto; padding: 45px; }}
+            .markdown-body {{ padding: 45px; border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }}
         </style>
     </head>
     <body class="markdown-body">
@@ -79,7 +71,6 @@ def view_report():
             try {{
                 const b64 = "{md_b64}";
                 const md = atob(b64);
-                // Decodificar UTF-8 correctamente después de atob
                 const decodeUtf8 = (s) => decodeURIComponent(escape(s));
                 document.getElementById('content').innerHTML = marked.parse(decodeUtf8(md));
             }} catch (e) {{
@@ -91,21 +82,18 @@ def view_report():
     """
     return html_content
 
-@app.post("/run-agents")
-def run_agents():
+@app.get("/")
+def health_check():
     """
-    Endpoint principal expuesto a Cloud Scheduler.
-    Se ejecuta a intervalos de 24 horas. Inicia todo el ciclo de diagnóstico de FinOps
-    (Estado, Cómputo, Datos, Huérfanos) y termina consolidando los resultados en Jira.
-    
-    Retorna un diccionario JSON confirmando la ejecución exitosa de los scripts.
+    Health check endpoint.
     """
-    execute_daily_finops_cycle()
-    return {"status": "ok", "message": "FinOps daily run completed successfully."}
+    logger.info("GET / health check endpoint called.")
+    return {"status": "healthy", "message": "PISA FinOps Agents Runner API is running!"}
 
+# Local execution setup (optional, but good practice)
 if __name__ == "__main__":
     import uvicorn
-    # Lanzamiento para pruebas en el entorno de desarrollo local (Antigravity).
-    # Obtiene el puerto dinámico necesario (usualmente manejado por la nube como 8080).
+    # Cloud Run injects the PORT environment variable
     port = int(os.environ.get("PORT", 8080))
+    logger.info(f"Running local server on port {port}")
     uvicorn.run(app, host="0.0.0.0", port=port)

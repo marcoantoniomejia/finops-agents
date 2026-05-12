@@ -18,6 +18,7 @@ from src.tools.monitoring import get_vm_utilization, calculate_savings
 # ==============================================================
 compute_auditor_agent = Agent(
     name="compute_auditor",
+    model="gemini-3.1-flash",
     instruction=(
         "Eres un Agente FinOps del CoE especializado en optimización de infraestructura (Cómputo/GCE) en Google Cloud.\n"
         "Estudia cuidadosamente las métricas de utilización de CPU que te devuelve la Tool y coteja con las "

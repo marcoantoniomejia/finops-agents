@@ -14,43 +14,62 @@ from src.agents.bigquery_auditor import bigquery_auditor_agent
 from src.agents.orphan_detector import orphan_detector_agent
 from src.report_builder import generate_unified_markdown_report
 from src.tools.notifications import send_slack_notification
-from src.tools.storage import save_report_to_gcs, save_agent_raw_data
+from src.tools.storage import save_agent_raw_data, save_report_to_gcs
 
 import asyncio
 from google.adk.runners import InMemoryRunner
 
 async def _run_agent(agent, prompt):
-    runner = InMemoryRunner(agent=agent)
-    events = await runner.run_debug(prompt)
-    
-    final_text = ""
-    for event in events:
-        # Algunos eventos tienen .text directamente (como los de log o respuesta final)
-        if hasattr(event, 'text') and event.text:
-            # Preferimos el último texto encontrado que no sea un log interno
-            # En ADK, la respuesta final suele estar en un evento de tipo AgentResponse
-            final_text = event.text
-        # Otros pueden tener .content.text o estructuras similares
-        elif hasattr(event, 'content'):
-            content = event.content
-            if hasattr(content, 'text') and content.text:
-                final_text = content.text
-            elif isinstance(content, list):
-                for part in content:
-                    if hasattr(part, 'text') and part.text:
-                        final_text = part.text
-
-    if not final_text:
-        # Fallback: intentar convertir el último evento a string si parece relevante
-        print(f"[DEBUG] No se encontró texto en eventos. Tipos detectados: {[type(e).__name__ for e in events]}")
+    try:
+        runner = InMemoryRunner(agent=agent)
+        events = await runner.run_debug(prompt)
         
-    return final_text if final_text else "No se pudo obtener una respuesta clara del agente."
+        final_text = ""
+        
+        for event in events:
+            # Buscamos texto de forma exhaustiva en el evento
+            candidates = []
+            
+            if hasattr(event, "text") and event.text:
+                candidates.append(str(event.text))
+                
+            if hasattr(event, "content") and event.content:
+                content = event.content
+                if hasattr(content, "text") and content.text:
+                    candidates.append(str(content.text))
+                elif isinstance(content, list):
+                    for part in content:
+                        if hasattr(part, "text") and part.text:
+                            candidates.append(str(part.text))
+                elif isinstance(content, str):
+                    candidates.append(content)
+            
+            if hasattr(event, "call") and event.call and hasattr(event.call, "response"):
+                 resp = event.call.response
+                 if hasattr(resp, "text") and resp.text:
+                     candidates.append(str(resp.text))
+
+            if candidates:
+                valid_candidates = [c for c in candidates if len(c) > 10]
+                if valid_candidates:
+                    final_text = valid_candidates[-1]
+                else:
+                    final_text = candidates[-1]
+
+        if not final_text:
+            return f"El agente {agent.name} no pudo redactar su informe (Eventos: {len(events)})."
+            
+        return final_text
+    except Exception as e:
+        return f"⚠️ Error en el agente {agent.name}: {str(e)}"
 
 def execute_daily_finops_cycle():
     """
     Ejecuta el ciclo de vida del ecosistema Multi-Agente (Pipeline principal).
     """
-    print("[INFO] Iniciando Orquestación FinOps v2.1...")
+    print(f"[DEBUG] PROJECT_ID: {os.environ.get('GOOGLE_CLOUD_PROJECT')}")
+    print(f"[DEBUG] LOCATION: {os.environ.get('GOOGLE_CLOUD_LOCATION')}")
+    print("[INFO] Iniciando Orquestación FinOps v2.1.12 (FORCE REFRESH GEMINI 3.1)...")
     
     # 1. State Manager 
     print("[INFO] Ejecutando Agente de Estado (Detección de Anomalías Presupuestales)...")

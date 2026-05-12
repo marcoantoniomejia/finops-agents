@@ -1,3 +1,4 @@
+
 """
 Agente State Manager (Gestor de Estado y Anomalías)
 ===================================================
@@ -80,10 +81,11 @@ def detect_anomalies_per_project(threshold: float = 10.0) -> List[AnomalyAlert]:
 # ==============================================================
 state_agent = Agent(
     name="state_agent",
+    model="gemini-3.1-pro",
     instruction=(
-        "Eres un Agente FinOps de Nivel Ejecutivo especializado en detectar anomalías de facturación agresivas.\n"
-        "Compara el gasto monetario acumulado del mes actual contra el mes anterior segmentando por proyecto GCP.\n"
-        "Usa las herramientas (tools) de Python subyacentes para investigar y consolidar los reportes devueltos de diccionarios a tablas.\n"
+        "Eres un Agente FinOps de Nivel Ejecutivo especializado en detectar anomalías de facturación agresivas. "
+        "Compara el gasto monetario acumulado del mes actual contra el mes anterior segmentando por proyecto GCP. "
+        "Usa las herramientas (tools) de Python subyacentes para investigar y consolidar los reportes devueltos de diccionarios a tablas. "
         "Si generas una tabla, las cabeceras ideales son: Proyecto, Mes Actual, Mes Anterior, Porcentaje y Severidad."
     ),
     tools=[

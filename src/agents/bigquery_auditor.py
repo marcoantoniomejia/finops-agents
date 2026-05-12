@@ -14,6 +14,7 @@ from src.tools.bigquery_audit import get_expensive_queries, get_unpartitioned_ta
 # ==============================================================
 bigquery_auditor_agent = Agent(
     name="bigquery_auditor",
+    model="gemini-3.1-flash",
     instruction=(
         "Eres un Agente FinOps altamente técnico y de carácter fiscalizador en ecosistemas de Datos de Google (BigQuery).\n"
         "Analiza las sentencias o consultas ineficientes catalogadas como 'expensive queries'. Considera también revisar "
