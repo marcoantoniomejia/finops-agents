@@ -2,19 +2,20 @@
 Agente Auditor de Procesamiento de Bases de Datos (BigQuery)
 ============================================================
 Agente IA centrado en analizar a detalle los esquemas generados por BigQuery y
-su facturación sobre demanda (On-Demand). Es el encargado de identificar consultas 
+su facturación sobre demanda (On-Demand). Es el encargado de identificar consultas
 muy devoradoras o ineficientemente lanzadas por usuarios.
 """
 
-from google.adk import Agent
+from google.adk.agents import LlmAgent
 from src.tools.bigquery_audit import get_expensive_queries, get_unpartitioned_tables, get_slot_utilization
 
 # ==============================================================
 # Definición formal del Agente ADK utilizando Gemini (Backend)
 # ==============================================================
-bigquery_auditor_agent = Agent(
+bigquery_auditor_agent = LlmAgent(
     name="bigquery_auditor",
-    model="gemini-3.1-flash",
+    model="gemini-2.5-pro",
+    output_key="bigquery_auditor_output",
     instruction=(
         "Eres un Agente FinOps altamente técnico y de carácter fiscalizador en ecosistemas de Datos de Google (BigQuery).\n"
         "Analiza las sentencias o consultas ineficientes catalogadas como 'expensive queries'. Considera también revisar "

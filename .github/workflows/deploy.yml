@@ -8,22 +8,32 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
+      id-token: write   # Requerido por Workload Identity Federation
 
     steps:
       - uses: actions/checkout@v4
 
+      # Autenticación con Workload Identity Federation (sin Service Account Keys)
       - id: auth
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: projects/1075963420777/locations/global/workloadIdentityPools/github-pool/providers/github-provider
           service_account: github-deploy@psa-infra-app-mx-dev-proj.iam.gserviceaccount.com
 
+      # Despliegue desde código fuente (Cloud Run buildea la imagen via Cloud Build)
       - uses: google-github-actions/deploy-cloudrun@v2
         with:
           service: finops-agents
           source: .
           region: us-central1
+          # FIX: Se agregan todas las variables de entorno necesarias.
+          # SLACK_WEBHOOK_URL debe configurarse como Secret en Cloud Run (no como env_var plana).
           env_vars: |
             GOOGLE_CLOUD_PROJECT=psa-infra-app-mx-dev-proj
+            GOOGLE_CLOUD_LOCATION=us-central1
+            GOOGLE_GENAI_USE_VERTEXAI=TRUE
             BUDGET_THRESHOLD=10
+            REPORTS_BUCKET=psa-finops-reports-1075963420777
+          # Secrets gestionados por Secret Manager (no expuestos en texto plano)
+          secrets: |
+            SLACK_WEBHOOK_URL=slack-webhook-url:latest

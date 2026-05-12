@@ -1,6 +1,7 @@
 
 from fastapi import FastAPI
 import os
+import asyncio
 from src.orchestrator import execute_daily_finops_cycle
 import logging
 
@@ -10,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 # Environment setup
 project_id = os.environ.get('GOOGLE_CLOUD_PROJECT')
-location = os.environ.get('GOOGLE_CLOUD_LOCATION', 'us-central1') # Default if not set
+location = os.environ.get('GOOGLE_CLOUD_LOCATION', 'us-central1')
 
 if not project_id:
     logger.warning("GOOGLE_CLOUD_PROJECT environment variable is not set.")
@@ -18,21 +19,22 @@ if not project_id:
 app = FastAPI(
     title="PISA FinOps Agents Runner",
     description="API to trigger FinOps agent execution and report generation.",
-    version="2.1.12" # Forced refresh 2.1.12
+    version="2.2.0"
 )
 
 @app.post("/run-agents")
-def run_agents_endpoint():
+async def run_agents_endpoint():
     """
     Triggers the FinOps agents execution via the Orchestrator.
+    El endpoint es async para que FastAPI/uvicorn gestione el event loop
+    correctamente sin conflictos con asyncio.run().
     """
     logger.info("POST /run-agents endpoint called.")
     try:
         logger.info("Attempting to run agents...")
-        # Execute the agents cycle
-        execute_daily_finops_cycle()
+        report_md = await execute_daily_finops_cycle()
         logger.info("Agents executed successfully.")
-        return {"status": "success", "message": "Reporte generado y guardado en GCS.", "version": "2.1.12"}
+        return {"status": "success", "message": "Reporte generado y guardado en GCS.", "version": "2.2.0"}
 
     except Exception as e:
         logger.error(f"Error during agent execution: {e}", exc_info=True)
@@ -45,13 +47,13 @@ import base64
 @app.get("/latest-report", response_class=HTMLResponse)
 def view_report():
     """
-    Renderiza el contenido Markdown del último reporte como HTML 
+    Renderiza el contenido Markdown del último reporte como HTML
     empleando un visor minimalista en el cliente (Marked.js).
     """
     md_content = get_latest_report_from_gcs()
     # Codificar en base64 para evitar problemas con comillas y backticks en el template JS
     md_b64 = base64.b64encode(md_content.encode('utf-8')).decode('utf-8')
-    
+
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -88,9 +90,15 @@ def health_check():
     Health check endpoint.
     """
     logger.info("GET / health check endpoint called.")
-    return {"status": "healthy", "message": "PISA FinOps Agents Runner API is running!"}
+    return {
+        "status": "healthy",
+        "message": "PISA FinOps Agents Runner API is running!",
+        "version": "2.2.0",
+        "project": project_id,
+        "location": location,
+    }
 
-# Local execution setup (optional, but good practice)
+# Local execution setup
 if __name__ == "__main__":
     import uvicorn
     # Cloud Run injects the PORT environment variable

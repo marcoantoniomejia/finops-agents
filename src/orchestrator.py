@@ -2,12 +2,17 @@
 Orquestador Multi-Agente ADK
 ============================
 Módulo maestro del ecosistema. Reúne y coordina a los diferentes Agentes IA (State, Compute, BigQuery, Orphans).
-Ejecuta los agentes en orden, recolecta sus respuestas independientes, invoca al modulo constructor 
+Ejecuta los agentes en orden, recolecta sus respuestas independientes, invoca al modulo constructor
 ('report_builder') para crear el documento integrado en formato Markdown y despacha las notificaciones (Slack).
 """
 
 import os
-from google.adk import Agent
+import logging
+from google.adk.agents import LlmAgent
+from google.adk.runners import InMemoryRunner
+from google.adk.sessions import InMemorySessionService
+from google.genai import types as genai_types
+
 from src.agents.state_manager import state_agent
 from src.agents.compute_auditor import compute_auditor_agent
 from src.agents.bigquery_auditor import bigquery_auditor_agent
@@ -16,103 +21,139 @@ from src.report_builder import generate_unified_markdown_report
 from src.tools.notifications import send_slack_notification
 from src.tools.storage import save_agent_raw_data, save_report_to_gcs
 
-import asyncio
-from google.adk.runners import InMemoryRunner
+logger = logging.getLogger(__name__)
 
-async def _run_agent(agent, prompt):
+# ---------------------------------------------------------------
+# Helper: Ejecuta un agente ADK de forma asíncrona y extrae texto
+# ---------------------------------------------------------------
+async def _run_agent(agent: LlmAgent, prompt: str) -> str:
+    """
+    Ejecuta un agente ADK usando InMemoryRunner y retorna el texto de la respuesta final.
+    Utiliza el output_key del agente para extraer la respuesta del estado de sesión cuando
+    está disponible; de lo contrario, parsea los eventos del runner directamente.
+    """
     try:
-        runner = InMemoryRunner(agent=agent)
-        events = await runner.run_debug(prompt)
-        
-        final_text = ""
-        
-        for event in events:
-            # Buscamos texto de forma exhaustiva en el evento
-            candidates = []
-            
-            if hasattr(event, "text") and event.text:
-                candidates.append(str(event.text))
-                
-            if hasattr(event, "content") and event.content:
-                content = event.content
-                if hasattr(content, "text") and content.text:
-                    candidates.append(str(content.text))
-                elif isinstance(content, list):
-                    for part in content:
-                        if hasattr(part, "text") and part.text:
-                            candidates.append(str(part.text))
-                elif isinstance(content, str):
-                    candidates.append(content)
-            
-            if hasattr(event, "call") and event.call and hasattr(event.call, "response"):
-                 resp = event.call.response
-                 if hasattr(resp, "text") and resp.text:
-                     candidates.append(str(resp.text))
+        session_service = InMemorySessionService()
+        runner = InMemoryRunner(agent=agent, session_service=session_service)
 
-            if candidates:
-                valid_candidates = [c for c in candidates if len(c) > 10]
-                if valid_candidates:
-                    final_text = valid_candidates[-1]
-                else:
-                    final_text = candidates[-1]
+        # Crear sesión y construir el mensaje de usuario
+        session = await session_service.create_session(
+            app_name=agent.name,
+            user_id="finops-orchestrator"
+        )
+        user_message = genai_types.Content(
+            role="user",
+            parts=[genai_types.Part(text=prompt)]
+        )
+
+        final_text = ""
+
+        # Iterar sobre los eventos que el runner emite (streaming ADK)
+        async for event in runner.run_async(
+            user_id="finops-orchestrator",
+            session_id=session.id,
+            new_message=user_message,
+        ):
+            # Extraer texto del evento de respuesta del modelo
+            if (
+                hasattr(event, "content")
+                and event.content
+                and hasattr(event.content, "parts")
+            ):
+                for part in event.content.parts:
+                    if hasattr(part, "text") and part.text:
+                        final_text = part.text  # Tomamos la última parte de texto
+
+        # Intentar recuperar resultado desde el output_key del estado de sesión
+        if agent.output_key:
+            refreshed = await session_service.get_session(
+                app_name=agent.name,
+                user_id="finops-orchestrator",
+                session_id=session.id,
+            )
+            state_value = (refreshed.state or {}).get(agent.output_key, "")
+            if state_value:
+                final_text = str(state_value)
 
         if not final_text:
-            return f"El agente {agent.name} no pudo redactar su informe (Eventos: {len(events)})."
-            
-        return final_text
-    except Exception as e:
-        return f"⚠️ Error en el agente {agent.name}: {str(e)}"
+            return f"⚠️ El agente `{agent.name}` no produjo un informe legible."
 
-def execute_daily_finops_cycle():
+        return final_text
+
+    except Exception as e:
+        logger.error(f"Error ejecutando agente {agent.name}: {e}", exc_info=True)
+        return f"⚠️ Error en el agente `{agent.name}`: {str(e)}"
+
+
+# ---------------------------------------------------------------
+# Pipeline principal — debe llamarse desde un contexto async
+# ---------------------------------------------------------------
+async def execute_daily_finops_cycle():
     """
     Ejecuta el ciclo de vida del ecosistema Multi-Agente (Pipeline principal).
+    Esta función es ASYNC para integrarse correctamente con FastAPI/uvicorn.
     """
-    print(f"[DEBUG] PROJECT_ID: {os.environ.get('GOOGLE_CLOUD_PROJECT')}")
-    print(f"[DEBUG] LOCATION: {os.environ.get('GOOGLE_CLOUD_LOCATION')}")
-    print("[INFO] Iniciando Orquestación FinOps v2.1.12 (FORCE REFRESH GEMINI 3.1)...")
-    
-    # 1. State Manager 
-    print("[INFO] Ejecutando Agente de Estado (Detección de Anomalías Presupuestales)...")
-    anomalies_response = asyncio.run(_run_agent(state_agent, "Genera el reporte de anomalías de gasto por proyecto"))
+    logger.info(f"[DEBUG] PROJECT_ID: {os.environ.get('GOOGLE_CLOUD_PROJECT')}")
+    logger.info(f"[DEBUG] LOCATION: {os.environ.get('GOOGLE_CLOUD_LOCATION')}")
+    logger.info("[INFO] Iniciando Orquestación FinOps v2.2.0...")
+
+    # 1. State Manager
+    logger.info("[INFO] Ejecutando Agente de Estado (Detección de Anomalías Presupuestales)...")
+    anomalies_response = await _run_agent(
+        state_agent,
+        "Genera el reporte de anomalías de gasto por proyecto"
+    )
     save_agent_raw_data("state_manager", anomalies_response)
-    
+
     # 2. Compute Auditor
-    print("[INFO] Ejecutando Agente de Cómputo (Right-Sizing y métricas)...")
-    compute_response = asyncio.run(_run_agent(compute_auditor_agent, "Genera el reporte de las recomendaciones de VM Sizing"))
+    logger.info("[INFO] Ejecutando Agente de Cómputo (Right-Sizing y métricas)...")
+    compute_response = await _run_agent(
+        compute_auditor_agent,
+        "Genera el reporte de las recomendaciones de VM Sizing"
+    )
     save_agent_raw_data("compute_auditor", compute_response)
-    
+
     # 3. BigQuery Auditor
-    print("[INFO] Ejecutando Agente BigQuery (INFORMATION_SCHEMA)...")
-    bq_response = asyncio.run(_run_agent(bigquery_auditor_agent, "Genera auditoría de queries costosas de los últimos 7 días"))
+    logger.info("[INFO] Ejecutando Agente BigQuery (INFORMATION_SCHEMA)...")
+    bq_response = await _run_agent(
+        bigquery_auditor_agent,
+        "Genera auditoría de queries costosas de los últimos 7 días"
+    )
     save_agent_raw_data("bigquery_auditor", bq_response)
-    
+
     # 4. Orphan Detector
-    print("[INFO] Ejecutando Agente de Recursos Huérfanos (Discos/IPs)...")
-    orphans_response = asyncio.run(_run_agent(orphan_detector_agent, "Ubica todas las IPs y discos sin uso en la red"))
+    logger.info("[INFO] Ejecutando Agente de Recursos Huérfanos (Discos/IPs)...")
+    orphans_response = await _run_agent(
+        orphan_detector_agent,
+        "Ubica todas las IPs y discos sin uso en la red"
+    )
     save_agent_raw_data("orphan_detector", orphans_response)
 
-    # 5. Builder - Conversión del payload a reporte amigable en Markdown
-    print("[INFO] Consolidando hallazgos de IA en Reporte Unificado...")
+    # 5. Builder — Consolidación en reporte Markdown unificado
+    logger.info("[INFO] Consolidando hallazgos de IA en Reporte Unificado...")
     report_md = generate_unified_markdown_report(
-        anomalies_response, 
-        compute_response, 
-        bq_response, 
+        anomalies_response,
+        compute_response,
+        bq_response,
         orphans_response
-    ) 
-    
-    # 6. Storage - Persiste el reporte en GCS para visualización web
-    print("[INFO] Guardando reporte en Cloud Storage...")
+    )
+
+    # 6. Storage — Persistencia en GCS
+    logger.info("[INFO] Guardando reporte en Cloud Storage...")
     save_report_to_gcs(report_md)
-    
-    # 7. Notify - Envía la salida por Slack WebHooks
-    print("[INFO] Notificando resultados...")
+
+    # 7. Notify — Slack WebHook
+    logger.info("[INFO] Notificando resultados...")
     if send_slack_notification(report_md):
-        print("[INFO] Notificación ejecutada con éxito.")
+        logger.info("[INFO] Notificación ejecutada con éxito.")
     else:
-        print("[WARN] Error o carencia de llave en notificador Slack.")
-        
-    print("[INFO] Ciclo de Orquestación Finalizado exitosamente.")
+        logger.warning("[WARN] Error o carencia de llave en notificador Slack.")
+
+    logger.info("[INFO] Ciclo de Orquestación Finalizado exitosamente.")
+    return report_md
+
 
 if __name__ == "__main__":
-    # Facilidad para ejecutarlo como script suelto desde bash sin el server API
-    execute_daily_finops_cycle()
+    import asyncio
+    # Permite ejecutarlo como script suelto desde bash sin el server API
+    asyncio.run(execute_daily_finops_cycle())

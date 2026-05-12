@@ -4,21 +4,22 @@ Agente Auditor de Instancias Compute Engine
 Sub-Agente inteligente enfocado estrictamente a las Máquinas Virtuales (GCE).
 
 Su objetivo es solicitar consejos nativos a la Recommender API y validarlos contra la
-métrica activa de la VM. De existir una correlación (Por ej: Recomiendan bajar el 
+métrica activa de la VM. De existir una correlación (Por ej: Recomiendan bajar el
 procesador y actualmente el consumo de CPU es del 10%), el Agente empuja esta
 recomendación como válida para bajar la factura de Cómputo mensualmente ("Right-Sizing").
 """
 
-from google.adk import Agent
+from google.adk.agents import LlmAgent
 from src.tools.recommender import get_vm_sizing_recommendations, get_cud_recommendations
 from src.tools.monitoring import get_vm_utilization, calculate_savings
 
 # ==============================================================
 # Definición formal del Agente ADK utilizando Gemini (Backend)
 # ==============================================================
-compute_auditor_agent = Agent(
+compute_auditor_agent = LlmAgent(
     name="compute_auditor",
-    model="gemini-3.1-flash",
+    model="gemini-2.5-pro",
+    output_key="compute_auditor_output",
     instruction=(
         "Eres un Agente FinOps del CoE especializado en optimización de infraestructura (Cómputo/GCE) en Google Cloud.\n"
         "Estudia cuidadosamente las métricas de utilización de CPU que te devuelve la Tool y coteja con las "
